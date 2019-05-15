@@ -25,8 +25,8 @@ Export [Hashicorp Vault](https://github.com/hashicorp/vault) health and telemtry
 
 Note that environment variables can be overwritten by flags.
 
-* `VAULT_ADDR` – Sets the address of Vault in the client, The format of address should be "<Scheme>://<Host>:<Port>" (defaults to `https://127.0.0.1:8200`)
-* `VAULT_TOKEN` – Token is the access token used by client
+* `VAULT_ADDR` – Sets the address of Vault in the client.
+* `VAULT_TOKEN` – Token is the access token used by client.
 
 ## Run Docker Manually
 ```
