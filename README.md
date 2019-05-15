@@ -16,8 +16,10 @@ Export [Hashicorp Vault](https://github.com/hashicorp/vault) health and telemtry
 | vault_replication_performance_secondary | Is this Vault node a secondary performance replica. | |
 | vault_info | Various info about the Vault node. | version, cluster_name, cluster_id |
 
+[Vault Health](https://www.vaultproject.io/api/system/health.html)
+
 ## Export Telemetry Metrics
-[Telemetry Metrics](https://www.vaultproject.io/api/system/metrics.html)
+[Vault Telemetry Metrics](https://www.vaultproject.io/api/system/metrics.html)
 
 ## Environment variables
 
@@ -26,7 +28,7 @@ Note that environment variables can be overwritten by flags.
 * `VAULT_ADDR` – Sets the address of Vault in the client, The format of address should be "<Scheme>://<Host>:<Port>" (defaults to `https://127.0.0.1:8200`)
 * `VAULT_TOKEN` – Token is the access token used by client
 
-## Run Docker Manulay
+## Run Docker Manually
 ```
   docker run \
   -e VAULT_ADDR="[Vault Address]" \
