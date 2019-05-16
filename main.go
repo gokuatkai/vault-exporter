@@ -198,14 +198,12 @@ func getVaultTokenGCPKMS()(string){
 		log.Fatal().Err(err)
 		return ""
 	}
-
-	rootKeyDecode, err := base64.StdEncoding.DecodeString(string(rootKeyData))
 	
 	log.Info().Msgf("root Key Data ", string(rootKeyData))
-	log.Info().Msgf("root Key Decode ", rootKeyDecode)
+	// log.Info().Msgf("root Key Decode ", string(rootKeyDecode))
 
 	rootlKeyDecryptRequest := &cloudkms.DecryptRequest{
-		Ciphertext: rootKeyDecode,
+		Ciphertext: string(rootKeyData),
 	}
 
 	rootKeyDecryptResponse, err := kmsService.Projects.Locations.KeyRings.CryptoKeys.Decrypt(kmsKeyId, rootlKeyDecryptRequest).Do()
@@ -214,13 +212,14 @@ func getVaultTokenGCPKMS()(string){
 		return ""
 	}
 
-	rootKeyPlaintext := rootKeyDecryptResponse.Plaintext
+	rootKeyPlaintext, err := base64.StdEncoding.DecodeString(string(rootKeyDecryptResponse.Plaintext))
+
 	if err != nil {
 		log.Fatal().Err(err)
 		return ""
 	}
 
-	return rootKeyPlaintext
+	return string(rootKeyPlaintext)
 	
 }
 
