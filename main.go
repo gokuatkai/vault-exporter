@@ -145,11 +145,6 @@ func (e *VaultClient) getVaultHealth() (string) {
 // as Prometheus metrics
 func ServeVaultMetrics(w http.ResponseWriter, r *http.Request) {
 
-	vaultToken := os.Getenv("VAULT_TOKEN")
-	if vaultToken == "" {
-		log.Fatal().Msg("VAULT_TOKEN is required. Please set VAULT_TOKEN environment variable to your Vault token.")
-	}
-
 	var httpClient = &http.Client{
 		Timeout: time.Second * 10,
 	}
