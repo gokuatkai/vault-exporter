@@ -4,7 +4,9 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"runtime"
+	"context"
 	"io/ioutil"
+	"encoding/base64"
 	"fmt"
 	"time"
 	"os"
@@ -13,6 +15,10 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
+	"cloud.google.com/go/storage"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/cloudkms/v1"
+	"google.golang.org/api/option"
 
 )
 
@@ -39,6 +45,16 @@ var (
 	revision  string
 	buildDate string
 	goVersion = runtime.Version()
+
+	vaultAddr  string
+	vaultToken  string
+
+	kmsService *cloudkms.Service
+	kmsKeyId  string
+
+	storageClient *storage.Client
+	gcsBucketName string
+	userAgent = fmt.Sprintf("vault-exporter/1.1.2 (%s)", runtime.Version())
 )
 
 const (
@@ -87,15 +103,8 @@ func NewVaultClient() (*VaultClient, error) {
 	}, nil
 }
 
-func bool2float(b bool) float64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-// Collect fetches the stats from configured Vault and delivers them
-// as Prometheus metrics. It implements prometheus.Collector.
+// Collect fetches the health from configured Vault and delivers them
+// as Prometheus metrics.
 func (e *VaultClient) getVaultHealth() (string) {
 	health, err := e.client.Sys().Health()
 	var b strings.Builder
@@ -132,12 +141,9 @@ func (e *VaultClient) getVaultHealth() (string) {
 	fmt.Fprintf(&b, "\nvault_info{cluster_id=\"%v\",cluster_name=\"%v\",version=\"%v\"} %v",health.ClusterID, health.ClusterName,health.Version, 1)
 	return b.String()
 }
-
+// Collect fetches the telemetry metrics from configured Vault and delivers them
+// as Prometheus metrics
 func ServeVaultMetrics(w http.ResponseWriter, r *http.Request) {
-	vaultAddr := os.Getenv("VAULT_ADDR")
-	if vaultAddr == "" {
-		log.Fatal().Msg("VAULT_ADDR is required. Please set VAULT_ADDR environment variable to your Vault address.")
-	}
 
 	vaultToken := os.Getenv("VAULT_TOKEN")
 	if vaultToken == "" {
@@ -181,6 +187,52 @@ func ServeVaultMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, telemetryMetrics, health)
 }
 
+func getVaultTokenGCPKMS()(string){
+	bucket := storageClient.Bucket(gcsBucketName)
+	ctx := context.Background()
+	rootkeyObject, err := bucket.Object("root-token.enc").NewReader(ctx)
+	if err != nil {
+		log.Fatal().Err(err)
+		return ""
+	}
+
+	defer rootkeyObject.Close()
+
+	rootKeyData, err := ioutil.ReadAll(rootkeyObject)
+	if err != nil {
+		log.Fatal().Err(err)
+		return ""
+	}
+
+	rootKeyDecode, err := base64.StdEncoding.DecodeString(string(rootKeyData))
+
+	rootlKeyDecryptRequest := &cloudkms.DecryptRequest{
+		Ciphertext: string(rootKeyDecode),
+	}
+
+	rootKeyDecryptResponse, err := kmsService.Projects.Locations.KeyRings.CryptoKeys.Decrypt(kmsKeyId, rootlKeyDecryptRequest).Do()
+	if err != nil {
+		log.Fatal().Err(err)
+		return ""
+	}
+
+	rootKeyPlaintext := rootKeyDecryptResponse.Plaintext
+	if err != nil {
+		log.Fatal().Err(err)
+		return ""
+	}
+
+	return rootKeyPlaintext
+	
+}
+
+func bool2float(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func init() {
 }
 
@@ -197,8 +249,55 @@ func main() {
 		Str("app", "vault-exporter").
 		Str("version", version).
 		Logger()
+	
+	// Initializing
+	gcsBucketName = os.Getenv("GCS_BUCKET_NAME")
+	if gcsBucketName == "" {
+		log.Fatal().Msg("GCS_BUCKET_NAME must be set and not empty")
+		return
+	}
 
-		// log startup message
+	kmsKeyId = os.Getenv("KMS_KEY_ID")
+	if kmsKeyId == "" {
+		log.Fatal().Msg("KMS_KEY_ID must be set and not empty")
+		return
+	}
+
+	kmsCtx, kmsCtxCancel := context.WithCancel(context.Background())
+	defer kmsCtxCancel()
+	kmsClient, err := google.DefaultClient(kmsCtx, "https://www.googleapis.com/auth/cloudkms")
+	if err != nil {
+		log.Fatal().Err(err)
+		return
+	}
+
+	kmsService, err = cloudkms.New(kmsClient)
+	if err != nil {
+		log.Fatal().Err(err)
+		return
+	}
+	kmsService.UserAgent = userAgent
+
+	storageCtx, storageCtxCancel := context.WithCancel(context.Background())
+	defer storageCtxCancel()
+	storageClient, err = storage.NewClient(storageCtx,
+		option.WithUserAgent(userAgent),
+		option.WithScopes(storage.ScopeReadWrite),
+	)
+	if err != nil {
+		log.Fatal().Err(err)
+	}
+
+	vaultAddr = os.Getenv("VAULT_ADDR")
+	if vaultAddr == "" {
+		log.Fatal().Msg("VAULT_ADDR is required. Please set VAULT_ADDR environment variable to your Vault address.")
+		return
+	}
+
+	vaultToken = getVaultTokenGCPKMS()
+
+
+	// log startup message
 	log.Info().
 		Str("branch", branch).
 		Str("revision", revision).
