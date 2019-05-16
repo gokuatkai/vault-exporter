@@ -200,6 +200,8 @@ func getVaultTokenGCPKMS()(string){
 	}
 
 	rootKeyDecode, err := base64.StdEncoding.DecodeString(string(rootKeyData))
+	
+	log.Info().Msgf("root Key Data ", string(rootKeyData))
 
 	rootlKeyDecryptRequest := &cloudkms.DecryptRequest{
 		Ciphertext: string(rootKeyDecode),
@@ -290,7 +292,7 @@ func main() {
 	}
 
 	vaultToken = getVaultTokenGCPKMS()
-
+	log.Info().Msgf("Vault Token", vaultToken)
 
 	// log startup message
 	log.Info().
