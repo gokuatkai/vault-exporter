@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
+	"crypto/tls"
 
 )
 
@@ -110,7 +111,7 @@ func (e *VaultClient) getVaultHealth() (string) {
 	if health.ReplicationDRMode == "disabled" {
 		fmt.Fprintf(&b, "\nvault_replication_dr_primary %v", 0)
 		fmt.Fprintf(&b, "\nvault_replication_dr_secondary %v", 0)
-		
+
 	 } else if health.ReplicationDRMode == "primary" {
 		fmt.Fprintf(&b, "\nvault_replication_dr_primary %v", 1)
 		fmt.Fprintf(&b, "\nvault_replication_dr_secondary %v", 0)
@@ -144,7 +145,11 @@ func ServeVaultMetrics(w http.ResponseWriter, r *http.Request) {
 		log.Fatal().Msg("VAULT_TOKEN is required. Please set VAULT_TOKEN environment variable to your Vault token.")
 	}
 
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: *sslInsecure},
+	}
 	var httpClient = &http.Client{
+		Transport: tr,
 		Timeout: time.Second * 10,
 	}
     url := fmt.Sprintf("%v/v1/sys/metrics", vaultAddr)
@@ -164,19 +169,19 @@ func ServeVaultMetrics(w http.ResponseWriter, r *http.Request) {
 	response, err := httpClient.Do(req)
 
 	defer response.Body.Close()
- 
+
     responseData, err := ioutil.ReadAll(response.Body)
     if err != nil {
         log.Fatal().Err(err)
     }
-	
+
 	telemetryMetrics := string(responseData)
 	vaultClient, err := NewVaultClient()
 
 	if err != nil {
         log.Fatal().Err(err)
 	}
-	
+
 	health := vaultClient.getVaultHealth()
 	fmt.Fprint(w, telemetryMetrics, health)
 }
